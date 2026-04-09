@@ -323,7 +323,28 @@
 		}
 
 		const slashSegments = normalizedNet.split('/').filter(Boolean);
-		const tail = slashSegments.length ? slashSegments[slashSegments.length - 1] : normalizedNet;
+		let tail = normalizedNet;
+		if (slashSegments.length >= 2) {
+			const lastSlashSegment = normalizeText(slashSegments[slashSegments.length - 1]);
+			const previousSlashSegment = normalizeText(slashSegments[slashSegments.length - 2]);
+			const looksLikeHierarchicalPath = normalizedNet.startsWith('/') || slashSegments.length > 2;
+			if (looksLikeHierarchicalPath) {
+				if (lastSlashSegment.includes('.')) {
+					tail = lastSlashSegment || normalizedNet;
+				}
+				else if (/^\d+$/.test(lastSlashSegment)) {
+					tail = previousSlashSegment ? `${previousSlashSegment}/${lastSlashSegment}` : lastSlashSegment;
+				}
+				else if (/^[A-Za-z]{1,4}\d{1,4}$/i.test(previousSlashSegment)) {
+					tail = lastSlashSegment || normalizedNet;
+				}
+				else {
+					tail = previousSlashSegment && lastSlashSegment
+						? `${previousSlashSegment}/${lastSlashSegment}`
+						: (lastSlashSegment || normalizedNet);
+				}
+			}
+		}
 		const dotSegments = tail.split('.').filter(Boolean);
 		if (dotSegments.length < 2) {
 			return normalizeText(tail) || normalizedNet;
