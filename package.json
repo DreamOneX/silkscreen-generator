@@ -12,6 +12,7 @@
 		"compile": "rimraf ./dist/ && ts-node ./config/esbuild.prod.ts",
 		"lint": "eslint",
 		"fix": "eslint --fix",
+		"test:mock": "node ./scripts/mock-label-parsing-test.cjs",
 		"build": "npm run compile && ts-node ./build/packaged.ts"
 	},
 	"devDependencies": {

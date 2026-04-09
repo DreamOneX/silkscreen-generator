@@ -344,6 +344,10 @@
 				}
 			}
 		}
+		if (tail.includes('/')) {
+			return normalizeText(tail) || normalizedNet;
+		}
+
 		const dotSegments = tail.split('.').filter(Boolean);
 		if (dotSegments.length < 2) {
 			return normalizeText(tail) || normalizedNet;
@@ -394,7 +398,7 @@
 		if (regexLiteralMatch) {
 			try {
 				return {
-					regex: new RegExp(regexLiteralMatch[1], sanitizeRegexFlags(regexLiteralMatch[2])),
+					regex: new RegExp(`^(?:${regexLiteralMatch[1]})$`, sanitizeRegexFlags(regexLiteralMatch[2])),
 					target,
 				};
 			}
@@ -425,6 +429,69 @@
 		return undefined;
 	}
 
+	function splitLabelMappingLine(line) {
+		const mappingLine = String(line || '').trim();
+		if (!mappingLine) {
+			return undefined;
+		}
+
+		let inRegexLiteral = mappingLine.startsWith('/');
+		let index = inRegexLiteral ? 1 : 0;
+		let escaped = false;
+		while (index < mappingLine.length) {
+			const character = mappingLine[index];
+			if (inRegexLiteral) {
+				if (escaped) {
+					escaped = false;
+					index += 1;
+					continue;
+				}
+				if (character === '\\') {
+					escaped = true;
+					index += 1;
+					continue;
+				}
+				if (character === '/') {
+					index += 1;
+					while (index < mappingLine.length && /[a-z]/i.test(mappingLine[index])) {
+						index += 1;
+					}
+					inRegexLiteral = false;
+					continue;
+				}
+				index += 1;
+				continue;
+			}
+
+			if (mappingLine.startsWith('=>', index) || mappingLine.startsWith('->', index)) {
+				const separator = mappingLine.slice(index, index + 2);
+				return {
+					source: mappingLine.slice(0, index).trim(),
+					target: mappingLine.slice(index + 2).trim(),
+					separator,
+				};
+			}
+			if (character === '=') {
+				return {
+					source: mappingLine.slice(0, index).trim(),
+					target: mappingLine.slice(index + 1).trim(),
+					separator: '=',
+				};
+			}
+			if (character === ':' && !mappingLine.startsWith('re:')) {
+				return {
+					source: mappingLine.slice(0, index).trim(),
+					target: mappingLine.slice(index + 1).trim(),
+					separator: ':',
+				};
+			}
+
+			index += 1;
+		}
+
+		return undefined;
+	}
+
 	function parseLabelMappings(labelMapText) {
 		const mappingText = String(labelMapText || '');
 		const exactRules = new Map();
@@ -436,13 +503,13 @@
 				continue;
 			}
 
-			const segments = line.split(/\s*(=>|->|=|:)\s*/);
-			if (!segments || segments.length < 3) {
+			const mappingRule = splitLabelMappingLine(line);
+			if (!mappingRule) {
 				continue;
 			}
 
-			const source = normalizeText(segments[0]);
-			const target = normalizeText(segments.slice(2).join(''));
+			const source = normalizeText(mappingRule.source);
+			const target = normalizeText(mappingRule.target);
 			if (!source || !target) {
 				continue;
 			}
