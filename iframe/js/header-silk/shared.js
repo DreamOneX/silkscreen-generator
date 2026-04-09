@@ -326,8 +326,19 @@ const manualLabelOverrideCache = loadManualLabelOverrideCache();
 		const slashSegments = normalizedNet.split('/').filter(Boolean);
 		const tail = slashSegments.length ? slashSegments[slashSegments.length - 1] : normalizedNet;
 		const dotSegments = tail.split('.').filter(Boolean);
-		const compact = normalizeText(dotSegments.length ? dotSegments[dotSegments.length - 1] : tail);
-		return compact || normalizedNet;
+		if (dotSegments.length < 2) {
+			return normalizeText(tail) || normalizedNet;
+		}
+
+		const lastSegment = normalizeText(dotSegments[dotSegments.length - 1]);
+		if (!/^\d+$/.test(lastSegment)) {
+			return lastSegment || normalizedNet;
+		}
+
+		// Preserve dotted numeric labels such as P0.1 instead of collapsing them to 1.
+		const previousSegment = normalizeText(dotSegments[dotSegments.length - 2]);
+		const compact = normalizeText(previousSegment ? `${previousSegment}.${lastSegment}` : tail);
+		return compact || normalizeText(tail) || normalizedNet;
 	}
 
 	function escapeRegExp(text) {
@@ -954,4 +965,3 @@ export {
 		}
 		return images.length + lines.length;
 	}
-
