@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+/*
+ * Modified by DreamOneX in this fork of JLC_PLUG.
+ * This file has been changed from the original project and remains under Apache-2.0.
+ */
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');

@@ -1,5 +1,12 @@
 [简体中文](./README.md) | [English](#) | [繁體中文](./README.zh-Hant.md) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
 
+> Compliance notice: this repository is an unofficial fork derived from [cube1345/JLC_PLUG](https://github.com/cube1345/JLC_PLUG) and is not affiliated with the original project author. All modifications, build artifacts, and releases in this fork are maintained by the current fork owner.
+>
+> License notice: this fork continues to use Apache License 2.0. Modified source files that can legally carry file header comments are marked accordingly. Files such as `package.json` and binary build artifacts are covered by this repository-level notice instead.
+>
+> On branch `test/v2.2.1-dotted-label`, relative to baseline commit `8e7afa3c13993cd4ba2e8ce063d9eefb1217edd5`, the fork-specific modified files are:
+> `README.md`, `build/dist/symbols_V2.2.1.eext`, `iframe/js/header-silk.js`, `package.json`, `scripts/mock-label-parsing-test.cjs`.
+
 # Silk Generator
 
 An extension for JLCEDA / EasyEDA Pro PCB editor that generates and manages silkscreen labels for pin headers and female headers from pad net names.

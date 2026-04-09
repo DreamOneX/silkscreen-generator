@@ -1,5 +1,12 @@
 [简体中文](./README.md) | [English](./README.en.md) | [繁體中文](#) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
 
+> 合規聲明：本倉庫是基於 [cube1345/JLC_PLUG](https://github.com/cube1345/JLC_PLUG) 的非官方衍生 fork，與原專案作者無關；本 fork 的修改、建置產物與發布內容均由目前維護者負責。
+>
+> 授權聲明：本倉庫延續上游的 Apache License 2.0。已在可加入註解的已修改原始碼檔頭標示「本檔案已被修改」；對於 `package.json`、二進位建置產物等不適合加入檔頭註解的檔案，統一由此處聲明。
+>
+> 以分支 `test/v2.2.1-dotted-label` 為準、相對基線提交 `8e7afa3c13993cd4ba2e8ce063d9eefb1217edd5` 的 fork 變動檔案為：
+> `README.md`、`build/dist/symbols_V2.2.1.eext`、`iframe/js/header-silk.js`、`package.json`、`scripts/mock-label-parsing-test.cjs`。
+
 # 絲印一鍵生成
 
 這是一個用於嘉立創EDA / EasyEDA 專業版 PCB 編輯器的擴充功能，可依照排針、排母焊盤上的網路名稱快速產生與管理絲印。

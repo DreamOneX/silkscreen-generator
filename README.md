@@ -1,5 +1,12 @@
 [简体中文](#) | [English](./README.en.md) | [繁體中文](./README.zh-Hant.md) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
 
+> 合规声明：本仓库是基于 [cube1345/JLC_PLUG](https://github.com/cube1345/JLC_PLUG) 的非官方衍生 fork，与原项目作者无关；本 fork 的修改、构建产物和发布内容均由当前维护者负责。
+>
+> 许可证声明：本仓库延续上游的 Apache License 2.0。已在可添加注释的已修改源码文件头部标注“本文件已被修改”；对于 `package.json`、二进制构建产物等不适合添加文件头注释的文件，在此集中声明。
+>
+> 以分支 `test/v2.2.1-dotted-label` 为准、相对基线提交 `8e7afa3c13993cd4ba2e8ce063d9eefb1217edd5` 的 fork 变动文件为：
+> `README.md`、`build/dist/symbols_V2.2.1.eext`、`iframe/js/header-silk.js`、`package.json`、`scripts/mock-label-parsing-test.cjs`。
+
 # 丝印一键生成
 
 面向嘉立创EDA / EasyEDA Pro PCB 编辑器的扩展，用于根据排针、排母焊盘上的网络名快速生成和管理丝印。

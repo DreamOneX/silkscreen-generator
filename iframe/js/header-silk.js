@@ -1,3 +1,7 @@
+/*
+ * Modified by DreamOneX in this fork of JLC_PLUG.
+ * This file has been changed from the original project and remains under Apache-2.0.
+ */
 (function () {
 	const STORAGE_KEY = 'header_silk_settings_v2';
 	const ARTIFACT_STORAGE_KEY = 'header_silk_artifacts_v1';

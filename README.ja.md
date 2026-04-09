@@ -1,5 +1,12 @@
 [简体中文](./README.md) | [English](./README.en.md) | [繁體中文](./README.zh-Hant.md) | [日本語](#) | [Русский](./README.ru.md)
 
+> コンプライアンス表記: このリポジトリは [cube1345/JLC_PLUG](https://github.com/cube1345/JLC_PLUG) を基にした非公式 fork であり、元プロジェクトの作者とは無関係です。この fork における変更、ビルド成果物、配布物は現在の管理者が責任を負います。
+>
+> ライセンス表記: この fork は Apache License 2.0 を継承しています。ヘッダコメントを付与できる変更済みソースファイルには、その旨をファイル先頭に記載しています。`package.json` やバイナリのビルド成果物のようにファイルヘッダコメントを付けにくいものは、このリポジトリレベルの表記でカバーします。
+>
+> ブランチ `test/v2.2.1-dotted-label` において、基準コミット `8e7afa3c13993cd4ba2e8ce063d9eefb1217edd5` 以降に fork 側で変更されたファイルは次のとおりです。
+> `README.md`、`build/dist/symbols_V2.2.1.eext`、`iframe/js/header-silk.js`、`package.json`、`scripts/mock-label-parsing-test.cjs`。
+
 # シルク一括生成
 
 JLCEDA / EasyEDA Pro の PCB エディタ向け拡張機能です。ピンヘッダやソケットヘッダのパッドに接続されたネット名から、シルク文字をすばやく生成・管理します。
