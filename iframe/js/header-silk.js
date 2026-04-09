@@ -21,10 +21,10 @@
 	const MAX_STORED_ARTIFACT_GROUPS = 80;
 	const MAX_HEADER_PARSE_CACHE = 24;
 	const MAX_HEADER_GEOMETRY_CACHE = 24;
-	const MAX_TEXT_ASSET_CACHE = 160;
 	const MAX_STORED_LABEL_OVERRIDE_COMPONENTS = 120;
 	const LABEL_PREVIEW_SELECTION_POLL_MS = 700;
 	const CREATE_BATCH_SIZE = 8;
+	const PCB_STRING_ALIGN_CENTER = 5;
 
 	const DEFAULT_SETTINGS = {
 		fontFamily: '黑体',
@@ -72,7 +72,6 @@
 	let currentSettings = loadSettings();
 	const headerParseCache = new Map();
 	const headerGeometryCache = new Map();
-	const textAssetCache = new Map();
 	const manualLabelOverrideCache = loadManualLabelOverrideCache();
 	let labelPreviewRefreshTimer = undefined;
 	let labelPreviewRequestId = 0;
@@ -820,7 +819,10 @@
 			if (!primitiveId) {
 				return accumulator;
 			}
-			if (handle.type === 'image') {
+			if (handle.type === 'text') {
+				accumulator.stringPrimitiveIds.push(String(primitiveId));
+			}
+			else if (handle.type === 'image') {
 				accumulator.imagePrimitiveIds.push(String(primitiveId));
 			}
 			else if (handle.type === 'line') {
@@ -828,6 +830,7 @@
 			}
 			return accumulator;
 		}, {
+			stringPrimitiveIds: [],
 			imagePrimitiveIds: [],
 			linePrimitiveIds: [],
 		});
@@ -835,7 +838,7 @@
 
 	async function rememberGeneratedArtifacts(header, layer, handles) {
 		const primitiveIds = collectPrimitiveIdsFromHandles(handles);
-		if (!primitiveIds.imagePrimitiveIds.length && !primitiveIds.linePrimitiveIds.length) {
+		if (!primitiveIds.stringPrimitiveIds.length && !primitiveIds.imagePrimitiveIds.length && !primitiveIds.linePrimitiveIds.length) {
 			return;
 		}
 
@@ -848,11 +851,21 @@
 			headerComponentId: normalizeText(header.componentId),
 			designator: normalizeText(header.designator),
 			layer: Number(layer) || 0,
+			stringPrimitiveIds: primitiveIds.stringPrimitiveIds,
 			imagePrimitiveIds: primitiveIds.imagePrimitiveIds,
 			linePrimitiveIds: primitiveIds.linePrimitiveIds,
 			createdAt: new Date().toISOString(),
 		});
 		saveArtifactGroups(groups);
+	}
+
+	async function resolveExistingStringsByIds(primitiveIds) {
+		const normalizedIds = [...new Set(asArray(primitiveIds).map(item => normalizeText(item)).filter(Boolean))];
+		if (!normalizedIds.length) {
+			return [];
+		}
+
+		return asArray(await eda.pcb_PrimitiveString.get(normalizedIds));
 	}
 
 	async function resolveExistingImagesByIds(primitiveIds) {
@@ -874,15 +887,19 @@
 	}
 
 	async function deleteArtifactGroupByRecord(group) {
+		const strings = await resolveExistingStringsByIds(group && group.stringPrimitiveIds);
 		const images = await resolveExistingImagesByIds(group && group.imagePrimitiveIds);
 		const lines = await resolveExistingLinesByIds(group && group.linePrimitiveIds);
+		if (strings.length) {
+			await eda.pcb_PrimitiveString.delete(strings);
+		}
 		if (images.length) {
 			await eda.pcb_PrimitiveImage.delete(images);
 		}
 		if (lines.length) {
 			await eda.pcb_PrimitiveLine.delete(lines);
 		}
-		return images.length + lines.length;
+		return strings.length + images.length + lines.length;
 	}
 
 	function activateTab(tabName) {
@@ -1404,16 +1421,6 @@
 		elements.fontFamily.value = settings.fontFamily;
 	}
 
-	function dataUrlToBlob(dataUrl) {
-		const base64Data = dataUrl.split(',')[1] || '';
-		const byteCharacters = atob(base64Data);
-		const byteArray = new Uint8Array(byteCharacters.length);
-		for (let index = 0; index < byteCharacters.length; index += 1) {
-			byteArray[index] = byteCharacters.charCodeAt(index);
-		}
-		return new Blob([byteArray], { type: 'image/png' });
-	}
-
 	function getImageTopLeftFromCenter(centerX, centerY, width, height, rotation) {
 		const normalizedRotation = ((Math.round(rotation) % 360) + 360) % 360;
 		switch (normalizedRotation) {
@@ -1506,59 +1513,6 @@
 			canvasHeightPx,
 			imageWidthMil: canvasWidthPx / pxPerMil,
 			imageHeightMil: canvasHeightPx / pxPerMil,
-		};
-	}
-
-	async function renderTextToBlob(text, settings, plan) {
-		const renderPlan = plan || getTextRenderPlan(text, settings);
-		const strokeWidthPx = renderPlan.strokeWidthPx;
-
-		const canvas = document.createElement('canvas');
-		const context = canvas.getContext('2d');
-		if (!context) {
-			throw new Error('生成失败，请重试。');
-		}
-
-		canvas.width = renderPlan.canvasWidthPx;
-		canvas.height = renderPlan.canvasHeightPx;
-
-		const drawContext = canvas.getContext('2d');
-		if (!drawContext) {
-			throw new Error('生成失败，请重试。');
-		}
-
-		drawContext.clearRect(0, 0, canvas.width, canvas.height);
-		drawContext.lineJoin = 'round';
-		drawContext.lineCap = 'round';
-		drawContext.lineWidth = strokeWidthPx;
-		drawContext.textBaseline = 'alphabetic';
-		drawContext.font = renderPlan.fontDeclaration;
-
-		if (settings.invert) {
-			drawContext.fillStyle = '#000000';
-			drawRoundedRect(drawContext, 0, 0, canvas.width, canvas.height, Math.max(8, canvas.height * 0.18));
-			drawContext.fill();
-			drawContext.fillStyle = '#ffffff';
-			drawContext.strokeStyle = '#ffffff';
-		}
-		else {
-			drawContext.fillStyle = '#000000';
-			drawContext.strokeStyle = '#000000';
-		}
-
-		const textX = renderPlan.paddingXPx + renderPlan.leftPx;
-		const textY = renderPlan.paddingYPx + renderPlan.ascentPx;
-		if (strokeWidthPx > 0) {
-			drawContext.strokeText(text, textX, textY);
-		}
-		drawContext.fillText(text, textX, textY);
-
-		return {
-			blob: dataUrlToBlob(canvas.toDataURL('image/png')),
-			widthPx: canvas.width,
-			heightPx: canvas.height,
-			imageWidthMil: renderPlan.imageWidthMil,
-			imageHeightMil: renderPlan.imageHeightMil,
 		};
 	}
 
@@ -2075,8 +2029,8 @@
 	function layoutArtifactsFromRange(artifacts, startPoint, endPoint, settings) {
 		const orientation = getRangeOrientation(startPoint, endPoint);
 		const rotation = getRangePlacementRotation(startPoint, endPoint, settings);
-		const imageItems = artifacts.items.filter(item => item.type === 'image');
-		const rowIndexes = [...new Set(imageItems.map(item => item.rowIndex))].sort((a, b) => a - b);
+		const textItems = artifacts.items.filter(item => item.type === 'text');
+		const rowIndexes = [...new Set(textItems.map(item => item.rowIndex))].sort((a, b) => a - b);
 		const minorCenters = getRangeMinorCenters(startPoint, endPoint, rowIndexes.length);
 		const rowCenterByIndex = new Map(rowIndexes.map((rowIndex, index) => [rowIndex, minorCenters[index]]));
 		const bounds = getRangeBounds(startPoint, endPoint);
@@ -2086,7 +2040,7 @@
 		const minorSpan = orientation === 'horizontal'
 			? Math.max(bounds.maxY - bounds.minY, 0)
 			: Math.max(bounds.maxX - bounds.minX, 0);
-		const maxItemsPerRow = Math.max(...rowIndexes.map((rowIndex) => imageItems.filter(item => item.rowIndex === rowIndex).length), 1);
+		const maxItemsPerRow = Math.max(...rowIndexes.map((rowIndex) => textItems.filter(item => item.rowIndex === rowIndex).length), 1);
 		const placementContext = {
 			orientation,
 			rotation,
@@ -2097,7 +2051,7 @@
 		const placedItems = [];
 
 		for (const rowIndex of rowIndexes) {
-			const rowItems = imageItems
+			const rowItems = textItems
 				.filter(item => item.rowIndex === rowIndex)
 				.sort((a, b) => {
 					const padNumberOrder = comparePadNumbers(a.padNumber, b.padNumber);
@@ -2117,22 +2071,16 @@
 				const autoScale = getAutoShrinkScaleForItem(item, placementContext);
 				const scaledImageWidth = item.imageWidth * autoScale;
 				const scaledImageHeight = item.imageHeight * autoScale;
-				const topLeft = getImageTopLeftFromCenter(
-					centerX,
-					centerY,
-					scaledImageWidth,
-					scaledImageHeight,
-					rotation,
-				);
 
 				placedItems.push({
 					...item,
-					centerX,
-					centerY,
-					topLeftX: topLeft.x,
-					topLeftY: topLeft.y,
+					x: centerX,
+					y: centerY,
 					imageWidth: scaledImageWidth,
 					imageHeight: scaledImageHeight,
+					fontSize: item.fontSize * autoScale,
+					lineWidth: item.lineWidth * autoScale,
+					expansion: item.expansion * autoScale,
 					rotation,
 					autoScale,
 				});
@@ -2243,9 +2191,13 @@
 		const targetLayer = getTargetSilkLayer(header, settings);
 		const artifacts = [];
 		const textPlanCache = new Map();
+		const textRenderSettings = getTextRenderSettings(settings);
 		const labelMappings = parseLabelMappings(settings && settings.labelMapText);
 		const offsetMil = clamp(Number(settings.offsetMil) || 18, 1, 300);
 		const rotation = getPlacementRotation(header, settings);
+		const baseExpansionMil = settings && settings.invert
+			? clamp(Math.max(textRenderSettings.strokeWidthMil, textRenderSettings.fontSizeMil * 0.12), 0, textRenderSettings.fontSizeMil * 0.5)
+			: 0;
 		for (const row of header.rows) {
 			const direction = getPlacementDirection(header, row, settings);
 			for (let padIndex = 0; padIndex < row.pads.length; padIndex += 1) {
@@ -2267,27 +2219,23 @@
 				}
 
 				const textPlan = textPlanCache.get(placement.text);
-				const topLeft = getImageTopLeftFromCenter(
-					placement.x,
-					placement.y,
-					textPlan.imageWidthMil,
-					textPlan.imageHeightMil,
-					placement.rotation,
-				);
-
 				artifacts.push({
-					type: 'image',
+					type: 'text',
 					text: placement.text,
 					padNumber: pad.padNumber,
 					rowIndex: row.index,
 					padIndex,
-					centerX: placement.x,
-					centerY: placement.y,
-					topLeftX: topLeft.x,
-					topLeftY: topLeft.y,
+					x: placement.x,
+					y: placement.y,
 					imageWidth: textPlan.imageWidthMil,
 					imageHeight: textPlan.imageHeightMil,
-					horizonMirror: false,
+					fontFamily: settings && settings.fontFamily ? settings.fontFamily : DEFAULT_SETTINGS.fontFamily,
+					fontSize: textRenderSettings.fontSizeMil,
+					lineWidth: textRenderSettings.strokeWidthMil,
+					alignMode: PCB_STRING_ALIGN_CENTER,
+					reverse: Boolean(settings && settings.invert),
+					expansion: baseExpansionMil,
+					mirror: false,
 					rotation: placement.rotation,
 				});
 			}
@@ -2298,91 +2246,6 @@
 			header,
 			items: artifacts.concat(getHeaderShellItems(header, settings)),
 		};
-	}
-
-	async function prepareTextComplexPolygon(text, settings) {
-		const plan = getTextRenderPlan(text, settings);
-		const rendered = await renderTextToBlob(text, settings, plan);
-		const complexPolygon = await eda.pcb_MathPolygon.convertImageToComplexPolygon(
-			rendered.blob,
-			rendered.widthPx,
-			rendered.heightPx,
-			0.3,
-			0.9,
-			1,
-			2,
-			false,
-			false,
-		);
-
-		if (!complexPolygon) {
-			throw new Error('生成失败，请调整参数后重试。');
-		}
-
-		return complexPolygon;
-	}
-
-	function createTextAssetCacheKey(text, settings) {
-		const textSettings = getTextRenderSettings(settings);
-		const fontFamily = normalizeText(settings && settings.fontFamily) || DEFAULT_SETTINGS.fontFamily;
-		return [
-			text,
-			fontFamily,
-			textSettings.fontSizeMil.toFixed(3),
-			textSettings.strokeWidthMil.toFixed(3),
-			settings && settings.invert ? 'invert' : 'normal',
-		].join('|');
-	}
-
-	async function getOrPrepareTextComplexPolygon(text, settings) {
-		const cacheKey = createTextAssetCacheKey(text, settings);
-		const cachedEntry = textAssetCache.get(cacheKey);
-		if (cachedEntry) {
-			touchMapEntry(textAssetCache, cacheKey, cachedEntry);
-			return cachedEntry;
-		}
-
-		const pendingEntry = prepareTextComplexPolygon(text, settings)
-			.then((complexPolygon) => {
-				touchMapEntry(textAssetCache, cacheKey, Promise.resolve(complexPolygon));
-				trimMapSize(textAssetCache, MAX_TEXT_ASSET_CACHE, cacheKey);
-				return complexPolygon;
-			})
-			.catch((error) => {
-				textAssetCache.delete(cacheKey);
-				throw error;
-			});
-
-		touchMapEntry(textAssetCache, cacheKey, pendingEntry);
-		trimMapSize(textAssetCache, MAX_TEXT_ASSET_CACHE, cacheKey);
-		return pendingEntry;
-	}
-
-	async function prepareTextAssetMap(items, settings) {
-		const imageItems = items.filter(item => item.type === 'image');
-		if (!imageItems.length) {
-			return new Map();
-		}
-
-		const uniqueTexts = [...new Set(imageItems.map(item => item.text).filter(Boolean))];
-		const assetEntries = await Promise.all(uniqueTexts.map(async (text) => {
-			const complexPolygon = await getOrPrepareTextComplexPolygon(text, settings);
-			return [text, complexPolygon];
-		}));
-		return new Map(assetEntries);
-	}
-
-	function hydratePlacedItemsWithAssetMap(items, assetMap) {
-		return items.map((item) => {
-			if (item.type !== 'image') {
-				return item;
-			}
-
-			return {
-				...item,
-				complexPolygon: assetMap.get(item.text),
-			};
-		});
 	}
 
 	function waitForRangeSelection(options) {
@@ -2455,17 +2318,14 @@
 	}
 
 	async function createCombinedSilkAtMouse(artifacts, settings) {
-		// 在用户框选范围时并行预热文字多边形，尽量把等待隐藏掉。
-		const assetMapPromise = prepareTextAssetMap(artifacts.items, settings);
 		const selection = await waitForRangeSelection({
 			followMouseTip: '请在 PCB 画布上框选生成范围。',
 			toastMessage: '请在 PCB 中框选生成范围。',
 			tooSmallMessage: '请拖动框选一个范围，不要单击。',
 		});
 		const translatedItems = layoutArtifactsFromRange(artifacts, selection.startPoint, selection.endPoint, settings);
-		const assetMap = await assetMapPromise;
-		const finalItems = hydratePlacedItemsWithAssetMap(translatedItems, assetMap);
-		const autoAdjustedCount = finalItems.filter(item => item.type === 'image' && Number(item.autoScale) < 0.999).length;
+		const finalItems = translatedItems;
+		const autoAdjustedCount = finalItems.filter(item => item.type === 'text' && Number(item.autoScale) < 0.999).length;
 		const finalHandles = await createFinalGroup(artifacts.layer, finalItems, false);
 		if (!finalHandles.length) {
 			throw new Error('生成失败，请重试。');
@@ -2510,6 +2370,33 @@
 					distance,
 					primitiveId,
 					primitive: existingImage,
+				};
+			}
+		}
+		return bestMatch;
+	}
+
+	function findNearestStringForTarget(existingStrings, usedPrimitiveIds, target, tolerance) {
+		let bestMatch;
+		for (const existingString of existingStrings) {
+			const primitiveId = normalizeText(existingString.getState_PrimitiveId && existingString.getState_PrimitiveId());
+			if (!primitiveId || usedPrimitiveIds.has(primitiveId)) {
+				continue;
+			}
+
+			const distance = Math.hypot(
+				(Number(existingString.getState_X && existingString.getState_X()) || 0) - target.centerX,
+				(Number(existingString.getState_Y && existingString.getState_Y()) || 0) - target.centerY,
+			);
+			if (distance > tolerance) {
+				continue;
+			}
+
+			if (!bestMatch || distance < bestMatch.distance) {
+				bestMatch = {
+					distance,
+					primitiveId,
+					primitive: existingString,
 				};
 			}
 		}
@@ -2565,14 +2452,24 @@
 		let deletedCount = 0;
 
 		for (const layer of layers) {
+			const existingStrings = asArray(await eda.pcb_PrimitiveString.getAll(layer));
 			const existingImages = asArray(await eda.pcb_PrimitiveImage.getAll(layer));
 			const existingLines = asArray(await eda.pcb_PrimitiveLine.getAll(undefined, layer));
+			const usedStringIds = new Set();
 			const usedImageIds = new Set();
 			const usedLineIds = new Set();
+			const stringsToDelete = [];
 			const imagesToDelete = [];
 			const linesToDelete = [];
 
 			for (const target of deletionTargets.targets) {
+				const stringMatch = findNearestStringForTarget(existingStrings, usedStringIds, target, deletionTargets.tolerance);
+				if (stringMatch) {
+					usedStringIds.add(stringMatch.primitiveId);
+					stringsToDelete.push(stringMatch.primitive);
+					continue;
+				}
+
 				const match = findNearestImageForTarget(existingImages, usedImageIds, target, deletionTargets.tolerance);
 				if (!match) {
 					continue;
@@ -2590,6 +2487,10 @@
 				linesToDelete.push(match.primitive);
 			}
 
+			if (stringsToDelete.length) {
+				await eda.pcb_PrimitiveString.delete(stringsToDelete);
+				deletedCount += stringsToDelete.length;
+			}
 			if (imagesToDelete.length) {
 				await eda.pcb_PrimitiveImage.delete(imagesToDelete);
 				deletedCount += imagesToDelete.length;
@@ -2604,6 +2505,25 @@
 	}
 
 	async function createFinalHandle(layer, item, primitiveLock) {
+		if (item.type === 'text') {
+			const createdString = await eda.pcb_PrimitiveString.create(
+				layer,
+				item.x,
+				item.y,
+				item.text,
+				item.fontFamily || DEFAULT_SETTINGS.fontFamily,
+				item.fontSize,
+				item.lineWidth,
+				item.alignMode || PCB_STRING_ALIGN_CENTER,
+				item.rotation,
+				Boolean(item.reverse),
+				item.expansion || 0,
+				Boolean(item.mirror),
+				Boolean(primitiveLock),
+			);
+			return createdString ? { type: 'text', primitive: createdString } : undefined;
+		}
+
 		if (item.type === 'image') {
 			const createdImage = await eda.pcb_PrimitiveImage.create(
 				item.topLeftX,
@@ -2652,8 +2572,12 @@
 		if (!handles.length) {
 			return;
 		}
+		const strings = handles.filter((handle) => handle.type === 'text').map((handle) => handle.primitive);
 		const images = handles.filter((handle) => handle.type === 'image').map((handle) => handle.primitive);
 		const lines = handles.filter((handle) => handle.type === 'line').map((handle) => handle.primitive);
+		if (strings.length) {
+			await eda.pcb_PrimitiveString.delete(strings);
+		}
 		if (images.length) {
 			await eda.pcb_PrimitiveImage.delete(images);
 		}
@@ -2671,11 +2595,46 @@
 	}
 
 	async function deleteExistingArtifacts(layer, items, excludedPrimitiveIds) {
-		const imageItems = items.filter((item) => item.type === 'image');
+		const textItems = items.filter((item) => item.type === 'text');
 		const lineItems = items.filter((item) => item.type === 'line');
 		let deletedCount = 0;
 
-		if (imageItems.length) {
+		if (textItems.length) {
+			const existingStrings = asArray(await eda.pcb_PrimitiveString.getAll(layer));
+			const stringsToDelete = [];
+			for (const existingString of existingStrings) {
+				const primitiveId = existingString.getState_PrimitiveId && existingString.getState_PrimitiveId();
+				if (excludedPrimitiveIds && primitiveId && excludedPrimitiveIds.has(primitiveId)) {
+					continue;
+				}
+				const existingX = Number(existingString.getState_X && existingString.getState_X());
+				const existingY = Number(existingString.getState_Y && existingString.getState_Y());
+				const existingRotation = Number(existingString.getState_Rotation && existingString.getState_Rotation());
+				const existingFontSize = Number(existingString.getState_FontSize && existingString.getState_FontSize());
+
+				const matchedItem = textItems.find((item) => {
+					if (Math.abs(existingRotation - item.rotation) > 1) {
+						return false;
+					}
+					const tolerance = Math.max(Math.min(item.imageWidth, item.imageHeight) * 0.2, 1);
+					if (Math.abs(existingFontSize - item.fontSize) > tolerance) {
+						return false;
+					}
+					return Math.hypot(existingX - item.x, existingY - item.y) <= tolerance;
+				});
+
+				if (matchedItem) {
+					stringsToDelete.push(existingString);
+				}
+			}
+
+			if (stringsToDelete.length) {
+				await eda.pcb_PrimitiveString.delete(stringsToDelete);
+				deletedCount += stringsToDelete.length;
+			}
+		}
+
+		if (textItems.length) {
 			const existingImages = asArray(await eda.pcb_PrimitiveImage.getAll(layer));
 			const imagesToDelete = [];
 			for (const existingImage of existingImages) {
@@ -2688,8 +2647,9 @@
 				const existingWidth = Number(existingImage.getState_Width && existingImage.getState_Width());
 				const existingHeight = Number(existingImage.getState_Height && existingImage.getState_Height());
 				const existingRotation = Number(existingImage.getState_Rotation && existingImage.getState_Rotation());
+				const existingCenter = getImageCenterFromTopLeft(existingX, existingY, existingWidth, existingHeight, existingRotation);
 
-				const matchedItem = imageItems.find((item) => {
+				const matchedItem = textItems.find((item) => {
 					if (Math.abs(existingRotation - item.rotation) > 1) {
 						return false;
 					}
@@ -2700,7 +2660,7 @@
 					if (Math.abs(existingHeight - item.imageHeight) > tolerance) {
 						return false;
 					}
-					return Math.hypot(existingX - item.topLeftX, existingY - item.topLeftY) <= tolerance;
+					return Math.hypot(existingCenter.x - item.x, existingCenter.y - item.y) <= tolerance;
 				});
 
 				if (matchedItem) {
